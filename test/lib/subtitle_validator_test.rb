@@ -45,11 +45,12 @@ class SubtitleValidatorTest < ActiveSupport::TestCase
     assert_equal ['Cue#1 is empty', 'Cue#2 is empty'], SubtitleValidator.new(two_empty_cues).errors
   end
 
-  test '.validate! raises when any errors exist' do
+  test '.validate! raises with errors when any errors exist' do
     skip
-    assert_raises SubtitleValidator::ValidationError do
+    e = assert_raises SubtitleValidator::ValidationError do
       SubtitleValidator.new(BLANK_CUE).validate!
     end
+    assert_equal 'Cue#1 is empty', e.message
   end
 
   test 'returns errors for cues with more than 2 lines of text' do
@@ -69,7 +70,7 @@ class SubtitleValidatorTest < ActiveSupport::TestCase
     assert_equal ['Cue#2 has 3 or more lines'], SubtitleValidator.new(cue_2_has_three_lines).errors
   end
 
-  test 'raises on invalid SRT structure' do
+  test 'returns errors on invalid SRT structure' do
     skip
     cue_2_doesnt_start_with_index_digits = <<~SUBTITLE
       1
@@ -83,10 +84,8 @@ class SubtitleValidatorTest < ActiveSupport::TestCase
       That's right.
     SUBTITLE
 
-    e = assert_raises SubtitleValidator::ValidationError do
-      SubtitleValidator.new(cue_2_doesnt_start_with_index_digits).errors
-    end
-    assert_equal 'Failed to match group of lines 2 starting: SECOND', e.message
+    assert_equal ['Failed to match group of lines 2 starting: SECOND'],
+                 SubtitleValidator.new(cue_2_doesnt_start_with_index_digits).errors
   end
 
   test 'returns errors for cues with non incrementing timecodes per cue' do
@@ -111,51 +110,47 @@ class SubtitleValidatorTest < ActiveSupport::TestCase
                  SubtitleValidator.new(VALID_SUBTITLE, expected_film_duration: 4).errors
   end
 
-  test 'raises for cues with invalid timecodes' do
+  test 'returns errors for cues with invalid timecodes' do
     skip
-    assert_raises SubtitleValidator::ValidationError,
-                  'should raise error when cue has too many digits in minute segment' do
-      SubtitleValidator.new(
-        <<~SUBTITLE
-          1
-          00:001:26,013 --> 00:01:31,559
-          foo
-        SUBTITLE
-      ).errors
-    end
+    assert_equal ['Timecode 00:001:26,013 is badly formed'],
+                 SubtitleValidator.new(
+                   <<~SUBTITLE
+                     1
+                     00:001:26,013 --> 00:01:31,559
+                     foo
+                   SUBTITLE
+                 ).errors,
+                 'should check for errors in the minutes segment of the timecode'
 
-    assert_raises SubtitleValidator::ValidationError,
-                  'should raise error when cue has too many digits in seconds segment' do
-      SubtitleValidator.new(
-        <<~SUBTITLE
-          1
-          00:01:126,013 --> 00:01:31,559
-          foo
-        SUBTITLE
-      ).errors
-    end
+    assert_equal ['Timecode 00:00:126,013 is badly formed'],
+                 SubtitleValidator.new(
+                   <<~SUBTITLE
+                     1
+                     00:00:126,013 --> 00:01:31,559
+                     foo
+                   SUBTITLE
+                 ).errors,
+                 'should check for errors in the seconds segment of the timecode'
 
-    assert_raises SubtitleValidator::ValidationError,
-                  'should raise error when cue has too few digits in millisecond segment' do
-      SubtitleValidator.new(
-        <<~SUBTITLE
-          1
-          00:01:26,13 --> 00:01:31,559
-          foo
-        SUBTITLE
-      ).errors
-    end
+    assert_equal ['Timecode 00:00:26,13 is badly formed'],
+                 SubtitleValidator.new(
+                   <<~SUBTITLE
+                     1
+                     00:00:26,13 --> 00:01:31,559
+                     foo
+                   SUBTITLE
+                 ).errors,
+                 'should check for errors in the milliseconds segment of the timecode'
 
-    assert_raises SubtitleValidator::ValidationError,
-                  'should raise error when due has space in timecode' do
-      SubtitleValidator.new(
-        <<~SUBTITLE
-          1
-          00:01: 26,13 --> 00:01:31,559
-          foo
-        SUBTITLE
-      ).errors
-    end
+    assert_equal ['Timecode 00:00: 26,013 is badly formed'],
+                 SubtitleValidator.new(
+                   <<~SUBTITLE
+                     1
+                     00:00: 26,013 --> 00:01:31,559
+                     foo
+                   SUBTITLE
+                 ).errors,
+                 'should not accept spaces in the middle of a timestamp'
   end
 
   test 'raises no errors for cues with supported HTML tags' do
